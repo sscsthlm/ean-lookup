@@ -15,8 +15,8 @@ interface EanItem {
   id?: string;
   oldEan: string;
   newEan: string;
-  productName: string;
-  supplier: string;
+  productName?: string;
+  supplier?: string;
 }
 
 export default function Home() {
@@ -75,14 +75,14 @@ export default function Home() {
   // Lägg till ny EAN-ersättning
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!oldEan || !newEan || !productName) return;
+    if (!oldEan || !newEan) return;
 
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, "ean_mappings"), {
         oldEan: oldEan.trim(),
         newEan: newEan.trim(),
-        productName: productName.trim(),
+        productName: productName.trim() || "-",
         supplier: supplier.trim() || "Övrigt",
         createdAt: serverTimestamp(),
       });
@@ -92,7 +92,7 @@ export default function Home() {
       setNewEan("");
       setProductName("");
       setSupplier("");
-      
+
       // Uppdatera listan
       fetchItems();
     } catch (error) {
@@ -104,15 +104,21 @@ export default function Home() {
   };
 
   // Unika leverantörer för filtrering
-  const suppliers = ["Alla", ...Array.from(new Set(items.map((i) => i.supplier).filter(Boolean)))];
+  const suppliers = [
+    "Alla",
+    ...Array.from(new Set(items.map((i) => i.supplier).filter((s): s is string => Boolean(s)))),
+  ];
 
   // Filtrera resultat baserat på sökord och leverantör
   const filteredItems = items.filter((item) => {
+    const pName = item.productName || "";
+    const sup = item.supplier || "";
+
     const matchesSearch =
       item.oldEan.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.newEan.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.supplier.toLowerCase().includes(searchTerm.toLowerCase());
+      pName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      sup.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesSupplier =
       selectedSupplier === "Alla" || item.supplier === selectedSupplier;
@@ -194,7 +200,7 @@ export default function Home() {
           <form onSubmit={handleAddItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
             <input
               type="text"
-              placeholder="Gammalt EAN"
+              placeholder="Gammalt EAN *"
               value={oldEan}
               onChange={(e) => setOldEan(e.target.value)}
               required
@@ -202,7 +208,7 @@ export default function Home() {
             />
             <input
               type="text"
-              placeholder="Nytt EAN"
+              placeholder="Nytt EAN *"
               value={newEan}
               onChange={(e) => setNewEan(e.target.value)}
               required
@@ -210,10 +216,9 @@ export default function Home() {
             />
             <input
               type="text"
-              placeholder="Produktnamn"
+              placeholder="Produktnamn (valfritt)"
               value={productName}
               onChange={(e) => setProductName(e.target.value)}
-              required
               style={{ padding: "8px" }}
             />
             <input
@@ -273,29 +278,4 @@ export default function Home() {
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Gammalt EAN</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Nytt EAN</th>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Leverantör</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item) => (
-                <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  <td style={{ padding: "12px" }}>{item.productName}</td>
-                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>{item.oldEan}</td>
-                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>{item.newEan}</td>
-                  <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4} style={{ padding: "20px", textAlign: "center", color: "#718096" }}>
-                  Inga EAN-ersättningar hittades.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </main>
-  );
-}
+              <th style={{ padding: "12px", border: "1px solid #e2e8f0"
