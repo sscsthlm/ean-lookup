@@ -27,13 +27,18 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState("Alla");
 
+  // Öppet snabbuppslag för alla användare (ej admin)
+  const [quickEan, setQuickEan] = useState("");
+  const [quickResult, setQuickResult] = useState("");
+  const [isQuickLookingUp, setIsQuickLookingUp] = useState(false);
+
   // Admin states
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
 
-  // Formulärstater för enskild manuell inmatning
+  // Formulärstater för enskild manuell inmatning i Admin
   const [oldEan, setOldEan] = useState("");
   const [newEan, setNewEan] = useState("");
   const [productName, setProductName] = useState("");
@@ -83,7 +88,32 @@ export default function Home() {
     }
   };
 
-  // Slå upp EAN hos Bauhaus
+  // Öppet snabbuppslag på Bauhaus (för vanliga användare)
+  const handleQuickLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickEan.trim()) return;
+
+    setIsQuickLookingUp(true);
+    setQuickResult("Söker hos Bauhaus...");
+
+    try {
+      const res = await fetch(`/api/bauhaus?ean=${encodeURIComponent(quickEan.trim())}`);
+      const data = await res.json();
+
+      if (data.found && data.title) {
+        setQuickResult(`📦 ${data.title}`);
+      } else {
+        setQuickResult("❌ Ingen produkt hittades hos Bauhaus med denna EAN-kod.");
+      }
+    } catch (err) {
+      console.error("Uppslagsfel:", err);
+      setQuickResult("⚠️ Det gick inte att slå upp produkten.");
+    } finally {
+      setIsQuickLookingUp(false);
+    }
+  };
+
+  // Slå upp EAN i Admin-formuläret
   const lookupBauhaus = async (targetEan: string) => {
     if (!targetEan.trim()) {
       setLookupMsg("Fyll i ett EAN-nummer först.");
@@ -258,6 +288,43 @@ export default function Home() {
         >
           {isAdmin ? "🔒 Lås Admin" : "🔓 Admin-inloggning"}
         </button>
+      </div>
+
+      {/* ÖPPET SNABBUPPSLAG PÅ BAUHAUS (Öppet för alla) */}
+      <div style={{ background: "#ebf8ff", border: "1px solid #90cdf4", padding: "16px", borderRadius: "8px", marginBottom: "25px" }}>
+        <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", color: "#2b6cb0" }}>
+          🔍 Slå upp EAN direkt hos Bauhaus
+        </h3>
+        <form onSubmit={handleQuickLookup} style={{ display: "flex", gap: "10px" }}>
+          <input
+            type="text"
+            placeholder="Skriv in EAN-kod..."
+            value={quickEan}
+            onChange={(e) => setQuickEan(e.target.value)}
+            style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e0" }}
+          />
+          <button
+            type="submit"
+            disabled={isQuickLookingUp}
+            style={{
+              padding: "10px 18px",
+              background: "#3182ce",
+              color: "#fff",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {isQuickLookingUp ? "Söker..." : "Slå upp vara"}
+          </button>
+        </form>
+        {quickResult && (
+          <div style={{ marginTop: "12px", padding: "10px", background: "#fff", borderRadius: "6px", border: "1px solid #e2e8f0", fontWeight: "bold" }}>
+            {quickResult}
+          </div>
+        )}
       </div>
 
       {/* PIN Modal */}
@@ -457,11 +524,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* Sök och filter */}
+      {/* Sök och filter i Sparade EAN */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
         <input
           type="text"
-          placeholder="Sök på EAN, produkt eller leverantör..."
+          placeholder="Sök på sparat EAN, produkt eller leverantör..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #ccc" }}
