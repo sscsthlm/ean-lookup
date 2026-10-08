@@ -11,10 +11,11 @@ import {
   serverTimestamp,
   writeBatch,
   doc,
+  deleteDoc,
 } from "firebase/firestore";
 
 interface EanItem {
-  id?: string;
+  id: string;
   oldEan: string;
   newEan: string;
   productName?: string;
@@ -54,8 +55,8 @@ export default function Home() {
       const q = query(collection(db, "ean_mappings"), orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedItems: EanItem[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedItems.push({ id: doc.id, ...doc.data() } as EanItem);
+      querySnapshot.forEach((docSnap) => {
+        fetchedItems.push({ id: docSnap.id, ...docSnap.data() } as EanItem);
       });
       setItems(fetchedItems);
     } catch (error) {
@@ -165,6 +166,19 @@ export default function Home() {
     }
   };
 
+  // Ta bort en EAN-ersättning
+  const handleDeleteItem = async (id: string) => {
+    if (!confirm("Är du säker på att du vill ta bort den här ersättningen?")) return;
+
+    try {
+      await deleteDoc(doc(db, "ean_mappings", id));
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error("Fel vid borttagning:", error);
+      alert("Det gick inte att ta bort raden.");
+    }
+  };
+
   // Unika leverantörer för filtrering
   const suppliers = [
     "Alla",
@@ -223,221 +237,3 @@ export default function Home() {
             top: 0,
             left: 0,
             right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div style={{ background: "#fff", padding: "24px", borderRadius: "8px", width: "300px" }}>
-            <h3>Ange PIN-kod</h3>
-            <form onSubmit={handlePinSubmit}>
-              <input
-                type="password"
-                placeholder="PIN-kod (t.ex. 1234)"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                style={{ width: "100%", padding: "8px", margin: "10px 0", boxSizing: "border-box" }}
-                autoFocus
-              />
-              {pinError && <p style={{ color: "red", fontSize: "14px" }}>Fel PIN-kod!</p>}
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
-                <button type="button" onClick={() => setShowPinModal(false)} style={{ padding: "6px 12px" }}>
-                  Avbryt
-                </button>
-                <button type="submit" style={{ padding: "6px 12px", background: "#3182ce", color: "#fff", border: "none" }}>
-                  Lås upp
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Admin Panel (visas endast när isAdmin = true) */}
-      {isAdmin && (
-        <div style={{ background: "#f7fafc", border: "2px dashed #3182ce", padding: "20px", borderRadius: "8px", marginBottom: "30px" }}>
-          <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
-            <button
-              onClick={() => setImportTab("single")}
-              style={{
-                padding: "8px 14px",
-                background: importTab === "single" ? "#3182ce" : "#e2e8f0",
-                color: importTab === "single" ? "#fff" : "#000",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              ➕ Lägg till enstaka
-            </button>
-            <button
-              onClick={() => setImportTab("batch")}
-              style={{
-                padding: "8px 14px",
-                background: importTab === "batch" ? "#3182ce" : "#e2e8f0",
-                color: importTab === "batch" ? "#fff" : "#000",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              📋 Massimport från Excel
-            </button>
-          </div>
-
-          {/* Flik 1: Enstaka formulär */}
-          {importTab === "single" && (
-            <form onSubmit={handleAddItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
-              <input
-                type="text"
-                placeholder="Gammalt EAN *"
-                value={oldEan}
-                onChange={(e) => setOldEan(e.target.value)}
-                required
-                style={{ padding: "8px" }}
-              />
-              <input
-                type="text"
-                placeholder="Nytt EAN *"
-                value={newEan}
-                onChange={(e) => setNewEan(e.target.value)}
-                required
-                style={{ padding: "8px" }}
-              />
-              <input
-                type="text"
-                placeholder="Produktnamn (valfritt)"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                style={{ padding: "8px" }}
-              />
-              <input
-                type="text"
-                placeholder="Leverantör (valfritt)"
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-                style={{ padding: "8px" }}
-              />
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                style={{
-                  gridColumn: "span 2",
-                  padding: "10px",
-                  background: "#38a169",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                {isSubmitting ? "Sparar..." : "Spara ersättning"}
-              </button>
-            </form>
-          )}
-
-          {/* Flik 2: Massimport / Excel */}
-          {importTab === "batch" && (
-            <form onSubmit={handleBatchImport} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <p style={{ margin: "0 0 5px 0", fontSize: "14px", color: "#4a5568" }}>
-                Klistra in kolumner från Excel (eller skriv rad för rad med formatet: <strong>GammaltEAN [TAB/Semikolon/Komma] NyttEAN [TAB/Semikolon/Komma] Produktnamn</strong>):
-              </p>
-              <textarea
-                rows={8}
-                placeholder={`Exempel:\n7312345678901\t7398765432109\tSkruv M6\n7311111111111\t7322222222222\tPlugg 8mm`}
-                value={batchText}
-                onChange={(e) => setBatchText(e.target.value)}
-                required
-                style={{ width: "100%", padding: "8px", fontFamily: "monospace", boxSizing: "border-box" }}
-              />
-              <input
-                type="text"
-                placeholder="Gemensam leverantör för alla rader (valfritt)"
-                value={batchSupplier}
-                onChange={(e) => setBatchSupplier(e.target.value)}
-                style={{ padding: "8px" }}
-              />
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                style={{
-                  padding: "10px",
-                  background: "#38a169",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                {isSubmitting ? "Importerar..." : "Starta massimport"}
-              </button>
-              {batchStatus && (
-                <p style={{ marginTop: "8px", fontWeight: "bold", color: batchStatus.includes("Framgång") ? "green" : "#d69e2e" }}>
-                  {batchStatus}
-                </p>
-              )}
-            </form>
-          )}
-        </div>
-      )}
-
-      {/* Sök och filter */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <input
-          type="text"
-          placeholder="Sök på EAN, produkt eller leverantör..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #ccc" }}
-        />
-        <select
-          value={selectedSupplier}
-          onChange={(e) => setSelectedSupplier(e.target.value)}
-          style={{ padding: "10px", borderRadius: "6px", border: "1px solid #ccc" }}
-        >
-          {suppliers.map((sup) => (
-            <option key={sup} value={sup}>
-              {sup}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Lista / Tabell över EAN-koder */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
-          <thead>
-            <tr style={{ background: "#edf2f7", textAlign: "left" }}>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Gammalt EAN</th>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Nytt EAN</th>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Leverantör</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item) => (
-                <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
-                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>{item.oldEan}</td>
-                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>{item.newEan}</td>
-                  <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4} style={{ padding: "20px", textAlign: "center", color: "#718096" }}>
-                  Inga EAN-ersättningar hittades.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </main>
-  );
-}
