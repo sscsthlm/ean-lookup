@@ -9,6 +9,8 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  writeBatch,
+  doc,
 } from "firebase/firestore";
 
 interface EanItem {
@@ -30,12 +32,18 @@ export default function Home() {
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
 
-  // Formulärstater för admin
+  // Formulärstater för enskild manuell inmatning
   const [oldEan, setOldEan] = useState("");
   const [newEan, setNewEan] = useState("");
   const [productName, setProductName] = useState("");
   const [supplier, setSupplier] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Massimport / Batch-import stater
+  const [importTab, setImportTab] = useState<"single" | "batch">("single");
+  const [batchText, setBatchText] = useState("");
+  const [batchSupplier, setBatchSupplier] = useState("");
+  const [batchStatus, setBatchStatus] = useState("");
 
   // Inställd PIN-kod
   const ADMIN_PIN = "1234";
@@ -72,7 +80,7 @@ export default function Home() {
     }
   };
 
-  // Lägg till ny EAN-ersättning
+  // Lägg till enskild EAN-ersättning
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!oldEan || !newEan) return;
@@ -93,11 +101,65 @@ export default function Home() {
       setProductName("");
       setSupplier("");
 
-      // Uppdatera listan
       fetchItems();
     } catch (error) {
       console.error("Fel vid sparning:", error);
       alert("Det gick inte att spara. Kontrollera Firebase-anslutningen.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Importera flera rader samtidigt från Excel / Text
+  const handleBatchImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!batchText.trim()) return;
+
+    setIsSubmitting(true);
+    setBatchStatus("Bearbetar rader...");
+
+    try {
+      const lines = batchText.split("\n");
+      const batch = writeBatch(db);
+      let count = 0;
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        // Separera på Tab, semikolon eller kommatecken
+        const parts = trimmed.split(/[\t;,]+/).map((p) => p.trim());
+        if (parts.length >= 2) {
+          const oldEanVal = parts[0];
+          const newEanVal = parts[1];
+          const nameVal = parts[2] || "-";
+
+          if (oldEanVal && newEanVal) {
+            const newDocRef = doc(collection(db, "ean_mappings"));
+            batch.set(newDocRef, {
+              oldEan: oldEanVal,
+              newEan: newEanVal,
+              productName: nameVal,
+              supplier: batchSupplier.trim() || "Övrigt",
+              createdAt: serverTimestamp(),
+            });
+            count++;
+          }
+        }
+      }
+
+      if (count > 0) {
+        await batch.commit();
+        setBatchStatus(`Framgång! Importerade ${count} st EAN-ersättningar.`);
+        setBatchText("");
+        setBatchSupplier("");
+        fetchItems();
+      } else {
+        setBatchStatus("Hittade inga giltiga rader. Kontrollera formatet (GammaltEAN [Tab/Komma] NyttEAN).");
+      }
+    } catch (error) {
+      console.error("Fel vid massimport:", error);
+      setBatchStatus("Ett fel uppstod vid importen.");
     } finally {
       setIsSubmitting(false);
     }
@@ -196,55 +258,130 @@ export default function Home() {
       {/* Admin Panel (visas endast när isAdmin = true) */}
       {isAdmin && (
         <div style={{ background: "#f7fafc", border: "2px dashed #3182ce", padding: "20px", borderRadius: "8px", marginBottom: "30px" }}>
-          <h2>➕ Lägg till ny EAN-ersättning</h2>
-          <form onSubmit={handleAddItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
-            <input
-              type="text"
-              placeholder="Gammalt EAN *"
-              value={oldEan}
-              onChange={(e) => setOldEan(e.target.value)}
-              required
-              style={{ padding: "8px" }}
-            />
-            <input
-              type="text"
-              placeholder="Nytt EAN *"
-              value={newEan}
-              onChange={(e) => setNewEan(e.target.value)}
-              required
-              style={{ padding: "8px" }}
-            />
-            <input
-              type="text"
-              placeholder="Produktnamn (valfritt)"
-              value={productName}
-              onChange={(e) => setProductName(e.target.value)}
-              style={{ padding: "8px" }}
-            />
-            <input
-              type="text"
-              placeholder="Leverantör (valfritt)"
-              value={supplier}
-              onChange={(e) => setSupplier(e.target.value)}
-              style={{ padding: "8px" }}
-            />
+          <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
             <button
-              type="submit"
-              disabled={isSubmitting}
+              onClick={() => setImportTab("single")}
               style={{
-                gridColumn: "span 2",
-                padding: "10px",
-                background: "#38a169",
-                color: "#fff",
+                padding: "8px 14px",
+                background: importTab === "single" ? "#3182ce" : "#e2e8f0",
+                color: importTab === "single" ? "#fff" : "#000",
                 border: "none",
                 borderRadius: "4px",
                 cursor: "pointer",
-                fontWeight: "bold",
               }}
             >
-              {isSubmitting ? "Sparar..." : "Spara ersättning"}
+              ➕ Lägg till enstaka
             </button>
-          </form>
+            <button
+              onClick={() => setImportTab("batch")}
+              style={{
+                padding: "8px 14px",
+                background: importTab === "batch" ? "#3182ce" : "#e2e8f0",
+                color: importTab === "batch" ? "#fff" : "#000",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              📋 Massimport från Excel
+            </button>
+          </div>
+
+          {/* Flik 1: Enstaka formulär */}
+          {importTab === "single" && (
+            <form onSubmit={handleAddItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
+              <input
+                type="text"
+                placeholder="Gammalt EAN *"
+                value={oldEan}
+                onChange={(e) => setOldEan(e.target.value)}
+                required
+                style={{ padding: "8px" }}
+              />
+              <input
+                type="text"
+                placeholder="Nytt EAN *"
+                value={newEan}
+                onChange={(e) => setNewEan(e.target.value)}
+                required
+                style={{ padding: "8px" }}
+              />
+              <input
+                type="text"
+                placeholder="Produktnamn (valfritt)"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                style={{ padding: "8px" }}
+              />
+              <input
+                type="text"
+                placeholder="Leverantör (valfritt)"
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                style={{ padding: "8px" }}
+              />
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  gridColumn: "span 2",
+                  padding: "10px",
+                  background: "#38a169",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                {isSubmitting ? "Sparar..." : "Spara ersättning"}
+              </button>
+            </form>
+          )}
+
+          {/* Flik 2: Massimport / Excel */}
+          {importTab === "batch" && (
+            <form onSubmit={handleBatchImport} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <p style={{ margin: "0 0 5px 0", fontSize: "14px", color: "#4a5568" }}>
+                Klistra in kolumner från Excel (eller skriv rad för rad med formatet: <strong>GammaltEAN [TAB/Semikolon/Komma] NyttEAN [TAB/Semikolon/Komma] Produktnamn</strong>):
+              </p>
+              <textarea
+                rows={8}
+                placeholder={`Exempel:\n7312345678901\t7398765432109\tSkruv M6\n7311111111111\t7322222222222\tPlugg 8mm`}
+                value={batchText}
+                onChange={(e) => setBatchText(e.target.value)}
+                required
+                style={{ width: "100%", padding: "8px", fontFamily: "monospace", boxSizing: "border-box" }}
+              />
+              <input
+                type="text"
+                placeholder="Gemensam leverantör för alla rader (valfritt)"
+                value={batchSupplier}
+                onChange={(e) => setBatchSupplier(e.target.value)}
+                style={{ padding: "8px" }}
+              />
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  padding: "10px",
+                  background: "#38a169",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                {isSubmitting ? "Importerar..." : "Starta massimport"}
+              </button>
+              {batchStatus && (
+                <p style={{ marginTop: "8px", fontWeight: "bold", color: batchStatus.includes("Framgång") ? "green" : "#d69e2e" }}>
+                  {batchStatus}
+                </p>
+              )}
+            </form>
+          )}
         </div>
       )}
 
