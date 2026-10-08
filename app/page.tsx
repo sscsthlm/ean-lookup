@@ -29,7 +29,9 @@ export default function Home() {
 
   // Öppet snabbuppslag för alla användare (ej admin)
   const [quickEan, setQuickEan] = useState("");
-  const [quickResult, setQuickResult] = useState("");
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickImage, setQuickImage] = useState<string | null>(null);
+  const [quickMessage, setQuickMessage] = useState("");
   const [isQuickLookingUp, setIsQuickLookingUp] = useState(false);
 
   // Admin states
@@ -88,26 +90,30 @@ export default function Home() {
     }
   };
 
-  // Öppet snabbuppslag på Bauhaus (för vanliga användare)
+  // Öppet snabbuppslag på Bauhaus
   const handleQuickLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickEan.trim()) return;
 
     setIsQuickLookingUp(true);
-    setQuickResult("Söker hos Bauhaus...");
+    setQuickMessage("Söker hos Bauhaus...");
+    setQuickTitle("");
+    setQuickImage(null);
 
     try {
       const res = await fetch(`/api/bauhaus?ean=${encodeURIComponent(quickEan.trim())}`);
       const data = await res.json();
 
       if (data.found && data.title) {
-        setQuickResult(`📦 ${data.title}`);
+        setQuickTitle(data.title);
+        setQuickImage(data.image || null);
+        setQuickMessage("");
       } else {
-        setQuickResult("❌ Ingen produkt hittades hos Bauhaus med denna EAN-kod.");
+        setQuickMessage("❌ Ingen produkt hittades hos Bauhaus med denna EAN-kod.");
       }
     } catch (err) {
       console.error("Uppslagsfel:", err);
-      setQuickResult("⚠️ Det gick inte att slå upp produkten.");
+      setQuickMessage("⚠️ Det gick inte att slå upp produkten.");
     } finally {
       setIsQuickLookingUp(false);
     }
@@ -156,7 +162,6 @@ export default function Home() {
         createdAt: serverTimestamp(),
       });
 
-      // Nollställ formulär
       setOldEan("");
       setNewEan("");
       setProductName("");
@@ -189,7 +194,6 @@ export default function Home() {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // Separera på Tab, semikolon eller kommatecken
         const parts = trimmed.split(/[\t;,]+/).map((p) => p.trim());
         if (parts.length >= 2) {
           const oldEanVal = parts[0];
@@ -240,13 +244,11 @@ export default function Home() {
     }
   };
 
-  // Unika leverantörer för filtrering
   const suppliers = [
     "Alla",
     ...Array.from(new Set(items.map((i) => i.supplier).filter((s): s is string => Boolean(s)))),
   ];
 
-  // Filtrera resultat baserat på sökord och leverantör
   const filteredItems = items.filter((item) => {
     const pName = item.productName || "";
     const sup = item.supplier || "";
@@ -265,7 +267,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: "900px", margin: "0 auto", padding: "20px", fontFamily: "sans-serif" }}>
-      {/* Header med Hänglås för Admin */}
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
         <h1>EAN-Ersättningar</h1>
         <button
@@ -290,7 +292,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* ÖPPET SNABBUPPSLAG PÅ BAUHAUS (Öppet för alla) */}
+      {/* ÖPPET SNABBUPPSLAG MED BILD */}
       <div style={{ background: "#ebf8ff", border: "1px solid #90cdf4", padding: "16px", borderRadius: "8px", marginBottom: "25px" }}>
         <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", color: "#2b6cb0" }}>
           🔍 Slå upp EAN direkt hos Bauhaus
@@ -320,9 +322,26 @@ export default function Home() {
             {isQuickLookingUp ? "Söker..." : "Slå upp vara"}
           </button>
         </form>
-        {quickResult && (
-          <div style={{ marginTop: "12px", padding: "10px", background: "#fff", borderRadius: "6px", border: "1px solid #e2e8f0", fontWeight: "bold" }}>
-            {quickResult}
+
+        {quickMessage && (
+          <p style={{ marginTop: "12px", fontWeight: "bold", color: "#4a5568" }}>
+            {quickMessage}
+          </p>
+        )}
+
+        {quickTitle && (
+          <div style={{ marginTop: "15px", padding: "12px", background: "#fff", borderRadius: "8px", border: "1px solid #cbd5e0", display: "flex", alignItems: "center", gap: "15px" }}>
+            {quickImage && (
+              <img
+                src={quickImage}
+                alt={quickTitle}
+                style={{ width: "80px", height: "80px", objectFit: "contain", borderRadius: "6px", border: "1px solid #edf2f7" }}
+              />
+            )}
+            <div>
+              <span style={{ fontSize: "12px", color: "#718096", textTransform: "uppercase", fontWeight: "bold" }}>Produkt hos Bauhaus</span>
+              <h4 style={{ margin: "4px 0 0 0", fontSize: "16px", color: "#2d3748" }}>{quickTitle}</h4>
+            </div>
           </div>
         )}
       </div>
@@ -367,7 +386,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Admin Panel (visas endast när isAdmin = true) */}
+      {/* Admin Panel */}
       {isAdmin && (
         <div style={{ background: "#f7fafc", border: "2px dashed #3182ce", padding: "20px", borderRadius: "8px", marginBottom: "30px" }}>
           <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
@@ -399,7 +418,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Flik 1: Enstaka formulär */}
           {importTab === "single" && (
             <form onSubmit={handleAddItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
               <input
@@ -478,7 +496,6 @@ export default function Home() {
             </form>
           )}
 
-          {/* Flik 2: Massimport / Excel */}
           {importTab === "batch" && (
             <form onSubmit={handleBatchImport} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <p style={{ margin: "0 0 5px 0", fontSize: "14px", color: "#4a5568" }}>
