@@ -10,7 +10,6 @@ export async function GET(request: Request) {
 
   try {
     const cleanEan = ean.trim();
-    // Vi anropar Bauhaus interna söktjänst direkt
     const targetUrl = `https://www.bauhaus.se/search/ajax/suggest/?q=${encodeURIComponent(cleanEan)}`;
 
     const res = await fetch(targetUrl, {
@@ -21,27 +20,30 @@ export async function GET(request: Request) {
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "Accept-Language": "sv-SE,sv;q=0.9",
       },
-      next: { revalidate: 3600 }, // Cacha resultatet 1 timme för extra snabbhet
+      next: { revalidate: 3600 },
     });
 
     if (!res.ok) {
-      // Om autokomplettering-endpointen ger ett fel, gör en fallback till katalogsök
       return await fallbackCatalogSearch(cleanEan);
     }
 
     const data = await res.json();
 
-    // Kolla om vi fick några produktförslag i responset
     if (Array.isArray(data) && data.length > 0) {
       const firstHit = data[0];
       const title = firstHit.title || firstHit.name || firstHit.label;
+      const image = firstHit.image || firstHit.img || firstHit.thumbnail || null;
 
       if (title) {
-        return NextResponse.json({ found: true, title: title.trim(), ean: cleanEan });
+        return NextResponse.json({
+          found: true,
+          title: title.trim(),
+          image: image,
+          ean: cleanEan,
+        });
       }
     }
 
-    // Om autokompletteringen var tom, testa fallback
     return await fallbackCatalogSearch(cleanEan);
   } catch (error) {
     console.error("Fel vid Bauhaus-uppslag:", error);
@@ -49,7 +51,6 @@ export async function GET(request: Request) {
   }
 }
 
-// Fallback om ajax-förslaget inte gav direkt respons
 async function fallbackCatalogSearch(ean: string) {
   try {
     const fallbackUrl = `https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(ean)}`;
@@ -66,14 +67,23 @@ async function fallbackCatalogSearch(ean: string) {
 
     const html = await res.text();
 
-    // Sök ut produktnamnet ur länkstrukturen
     const productMatch = html.match(/class="product-item-link"[^>]*>\s*([^<]+)/i) ||
                          html.match(/data-product-name="([^"]+)"/i);
 
+    const imageMatch = html.match(/class="product-image-photo"[^>]*src="([^"]+)"/i) ||
+                       html.match(/meta property="og:image" content="([^"]+)"/i);
+
     if (productMatch && productMatch[1]) {
       const cleanTitle = productMatch[1].trim();
+      const imageUrl = imageMatch ? imageMatch[1] : null;
+
       if (!cleanTitle.toLowerCase().includes("sökresultat") && !cleanTitle.toLowerCase().includes("visar")) {
-        return NextResponse.json({ found: true, title: cleanTitle, ean });
+        return NextResponse.json({
+          found: true,
+          title: cleanTitle,
+          image: imageUrl,
+          ean,
+        });
       }
     }
 
