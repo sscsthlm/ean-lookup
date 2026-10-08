@@ -37,7 +37,7 @@ export default function Home() {
   const [supplier, setSupplier] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Inställd PIN-kod (ändra denna om du vill ha en annan kod)
+  // Inställd PIN-kod
   const ADMIN_PIN = "1234";
 
   // Hämta data från Firestore
@@ -278,4 +278,29 @@ export default function Home() {
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Gammalt EAN</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Nytt EAN</th>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0"
+              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Leverantör</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item) => (
+                <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
+                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>{item.oldEan}</td>
+                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>{item.newEan}</td>
+                  <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4} style={{ padding: "20px", textAlign: "center", color: "#718096" }}>
+                  Inga EAN-ersättningar hittades.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
+}
