@@ -17,7 +17,7 @@ export async function GET(request: Request) {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "sv-SE,sv;q=0.9",
       },
-      next: { revalidate: 3600 }, // Cacha sökresultat i 1 timme
+      next: { revalidate: 3600 },
     });
 
     if (!res.ok) {
@@ -26,29 +26,31 @@ export async function GET(request: Request) {
 
     const html = await res.text();
 
-    // Sök efter produkttitel i HTML-sidan
-    // Bauhaus använder ofta <title> eller specifika meta/itemprop-taggar för sökresultat
-    let titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/i) ||
-                     html.match(/<title>([^<]+)<\/title>/i);
+    // Rensa bort HTML-entiteter som &#039;
+    const cleanHtml = html.replace(/&#039;/g, "'").replace(/&quot;/g, '"');
 
-    let title = titleMatch ? titleMatch[1].trim() : "";
+    // Sök efter produktnamn i meta-taggar eller produktkort
+    let title = "";
 
-    // Tvätta bort sök-suffix som "Sökresultat för..." om det inte hittades en enskild produktsida
-    if (title.includes("Sökresultat") || title.includes("BAUHAUS")) {
-      // Försök hitta produktkortstitel i listan
-      const productCardMatch = html.match(/class="product-item-link"[^>]*>\s*([^<]+)/i) ||
-                               html.match(/class="product name product-item-name"[^>]*>[\s\S]*?title="([^"]+)"/i);
-      if (productCardMatch) {
-        title = productCardMatch[1].trim();
-      } else {
-        title = "";
+    // Försök hitta produktnamn i OpenGraph-titel
+    const ogMatch = cleanHtml.match(/<meta property="og:title" content="([^"]+)"/i);
+    if (ogMatch && !ogMatch[1].includes("Visar sökresultat") && !ogMatch[1].includes("Sökresultat")) {
+      title = ogMatch[1].trim();
+    }
+
+    // Om inte hittat, sök efter produktlänk
+    if (!title) {
+      const cardMatch = cleanHtml.match(/class="product-item-link"[^>]*>\s*([^<]+)/i);
+      if (cardMatch) {
+        title = cardMatch[1].trim();
       }
     }
 
-    if (title) {
+    // Om titeln fortfarande innehåller "Visar sökresultat" så räknas det INTE som en träff
+    if (title && !title.toLowerCase().includes("sökresultat") && !title.toLowerCase().includes("visar")) {
       return NextResponse.json({ found: true, title, ean });
     } else {
-      return NextResponse.json({ found: false, message: "Ingen träff på Bauhaus" });
+      return NextResponse.json({ found: false, message: "Ingen produkttillhörighet hittades på Bauhaus" });
     }
   } catch (error) {
     console.error("Fel vid Bauhaus-uppslag:", error);
