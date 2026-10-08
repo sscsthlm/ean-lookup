@@ -39,6 +39,8 @@ export default function Home() {
   const [productName, setProductName] = useState("");
   const [supplier, setSupplier] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupMsg, setLookupMsg] = useState("");
 
   // Massimport / Batch-import stater
   const [importTab, setImportTab] = useState<"single" | "batch">("single");
@@ -81,6 +83,34 @@ export default function Home() {
     }
   };
 
+  // Slå upp EAN hos Bauhaus
+  const lookupBauhaus = async (targetEan: string) => {
+    if (!targetEan.trim()) {
+      setLookupMsg("Fyll i ett EAN-nummer först.");
+      return;
+    }
+
+    setIsLookingUp(true);
+    setLookupMsg("Söker hos Bauhaus...");
+
+    try {
+      const res = await fetch(`/api/bauhaus?ean=${encodeURIComponent(targetEan.trim())}`);
+      const data = await res.json();
+
+      if (data.found && data.title) {
+        setProductName(data.title);
+        setLookupMsg(`Hittades: "${data.title}"`);
+      } else {
+        setLookupMsg("Ingen matchning hittades hos Bauhaus.");
+      }
+    } catch (err) {
+      console.error("Uppslagsfel:", err);
+      setLookupMsg("Fel vid anrop till Bauhaus.");
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
   // Lägg till enskild EAN-ersättning
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +131,7 @@ export default function Home() {
       setNewEan("");
       setProductName("");
       setSupplier("");
+      setLookupMsg("");
 
       fetchItems();
     } catch (error) {
@@ -320,19 +351,46 @@ export default function Home() {
                 required
                 style={{ padding: "8px" }}
               />
-              <input
-                type="text"
-                placeholder="Produktnamn (valfritt)"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                style={{ padding: "8px" }}
-              />
+              
+              <div style={{ gridColumn: "span 2", display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Produktnamn (valfritt eller hämta från Bauhaus)"
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  style={{ flex: 1, padding: "8px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => lookupBauhaus(oldEan || newEan)}
+                  disabled={isLookingUp}
+                  style={{
+                    padding: "8px 12px",
+                    background: "#dd6b20",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {isLookingUp ? "Söker..." : "🔍 Hämta från Bauhaus"}
+                </button>
+              </div>
+
+              {lookupMsg && (
+                <p style={{ gridColumn: "span 2", margin: "0", fontSize: "13px", color: lookupMsg.includes("Hittades") ? "green" : "#c53030" }}>
+                  {lookupMsg}
+                </p>
+              )}
+
               <input
                 type="text"
                 placeholder="Leverantör (valfritt)"
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
-                style={{ padding: "8px" }}
+                style={{ gridColumn: "span 2", padding: "8px" }}
               />
               <button
                 type="submit"
@@ -437,9 +495,24 @@ export default function Home() {
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
-                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>{item.oldEan}</td>
-                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>{item.newEan}</td>
+                  <td style={{ padding: "12px" }}>
+                    {item.productName || "-"}
+                  </td>
+                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
+                    {item.oldEan}
+                  </td>
+                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
+                    {item.newEan}
+                    <a
+                      href={`https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(item.newEan)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Öppna sökning på Bauhaus.se"
+                      style={{ marginLeft: "8px", textDecoration: "none", fontSize: "12px" }}
+                    >
+                      🔗
+                    </a>
+                  </td>
                   <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
                   {isAdmin && (
                     <td style={{ padding: "12px", textAlign: "center" }}>
