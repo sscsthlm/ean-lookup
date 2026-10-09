@@ -23,6 +23,70 @@ interface EanItem {
   imageUrl?: string;
 }
 
+// Komponent som visar sparad bild eller slår upp bild live baserat på nytt EAN
+function ProductImage({ ean, initialUrl, alt }: { ean: string; initialUrl?: string; alt: string }) {
+  const [imgSrc, setImgSrc] = useState<string | null>(initialUrl || null);
+  const [loading, setLoading] = useState(!initialUrl);
+
+  useEffect(() => {
+    if (initialUrl) {
+      setImgSrc(initialUrl);
+      setLoading(false);
+      return;
+    }
+
+    if (!ean) {
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setLoading(true);
+
+    fetch(`/api/bauhaus?ean=${encodeURIComponent(ean)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted) {
+          if (data.found && data.image) {
+            setImgSrc(data.image);
+          }
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ean, initialUrl]);
+
+  if (loading) {
+    return <span style={{ fontSize: "12px", color: "#a0aec0" }}>...</span>;
+  }
+
+  if (imgSrc) {
+    return (
+      <img
+        src={imgSrc}
+        alt={alt}
+        style={{
+          width: "45px",
+          height: "45px",
+          objectFit: "contain",
+          borderRadius: "4px",
+          border: "1px solid #e2e8f0",
+          display: "block",
+          margin: "0 auto",
+        }}
+      />
+    );
+  }
+
+  return <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>;
+}
+
 export default function Home() {
   const [items, setItems] = useState<EanItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -662,7 +726,7 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Lista / Tabell över EAN-koder (Med Bildkolumn längst till vänster) */}
+      {/* Lista / Tabell över EAN-koder (Med automatisk bild-hämtning för gamla rader) */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
           <thead>
@@ -679,17 +743,13 @@ export default function Home() {
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  {/* Bild-kolumn */}
+                  {/* Bild-kolumn som automatiskt slår upp om bildlänk saknas */}
                   <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl}
-                        alt={item.productName || "Produktbild"}
-                        style={{ width: "45px", height: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid #e2e8f0", display: "block", margin: "0 auto" }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
-                    )}
+                    <ProductImage
+                      ean={item.newEan}
+                      initialUrl={item.imageUrl}
+                      alt={item.productName || "Produktbild"}
+                    />
                   </td>
                   <td style={{ padding: "12px" }}>
                     {item.productName || "-"}
