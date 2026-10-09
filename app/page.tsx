@@ -95,7 +95,7 @@ export default function Home() {
     }
   };
 
-  // Snabbuppslag på Bauhaus (1 anrop åt gången, säkert)
+  // Snabbuppslag på Bauhaus
   const handleQuickLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickEan.trim()) return;
@@ -247,7 +247,7 @@ export default function Home() {
     }
   };
 
-  // KONTROLLERAD UPPDATERING: Går igenom rader långsamt (1 per sek) och sparar i Firestore
+  // Kontrollerad automatisk uppdatering av alla rader
   const handleEnrichAll = async () => {
     const missingItems = items.filter(
       (i) => !i.imageUrl || !i.productName || i.productName === "-"
@@ -297,7 +297,6 @@ export default function Home() {
         console.error(`Fel för EAN ${item.newEan}:`, err);
       }
 
-      // Vänta 1 sekund mellan anrop för att vara helt osynlig för Bauhaus
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
@@ -761,15 +760,15 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Lista / Tabell över EAN-koder */}
+      {/* Lista / Tabell över EAN-koder (Ny kolumnordning: Bild -> Gammalt EAN -> Nytt EAN -> Produktnamn -> Leverantör) */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
           <thead>
             <tr style={{ background: "#edf2f7", textAlign: "left" }}>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0", width: "55px", textAlign: "center" }}>Bild</th>
-              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Gammalt EAN</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Nytt EAN</th>
+              <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Leverantör</th>
               {isAdmin && <th style={{ padding: "12px", border: "1px solid #e2e8f0", width: "60px", textAlign: "center" }}>Åtgärd</th>}
             </tr>
@@ -778,6 +777,7 @@ export default function Home() {
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  {/* 1. Bild */}
                   <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
                     {item.imageUrl ? (
                       <img
@@ -797,10 +797,13 @@ export default function Home() {
                       <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
                     )}
                   </td>
-                  <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
+
+                  {/* 2. Gammalt EAN */}
                   <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
                     {item.oldEan}
                   </td>
+
+                  {/* 3. Nytt EAN */}
                   <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
                     {item.newEan}
                     <a
@@ -813,7 +816,14 @@ export default function Home() {
                       🔗
                     </a>
                   </td>
+
+                  {/* 4. Produktnamn */}
+                  <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
+
+                  {/* 5. Leverantör */}
                   <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
+
+                  {/* 6. Åtgärd (Admin) */}
                   {isAdmin && (
                     <td style={{ padding: "12px", textAlign: "center" }}>
                       <button
