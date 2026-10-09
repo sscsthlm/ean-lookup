@@ -12,6 +12,7 @@ import {
   writeBatch,
   doc,
   deleteDoc,
+  updateDoc,
 } from "firebase/firestore";
 
 interface EanItem {
@@ -23,155 +24,12 @@ interface EanItem {
   imageUrl?: string;
 }
 
-// Hjälpkomponent för att hämta BÅDE bild och produktnamn i bakgrunden om de saknas
-function ProductDetailsRow({
-  item,
-  isAdmin,
-  onDelete,
-}: {
-  item: EanItem;
-  isAdmin: boolean;
-  onDelete: (id: string) => void;
-}) {
-  const [productName, setProductName] = useState<string>(
-    item.productName && item.productName !== "-" ? item.productName : ""
-  );
-  const [imgSrc, setImgSrc] = useState<string | null>(item.imageUrl || null);
-  const [loading, setLoading] = useState<boolean>(
-    (!item.productName || item.productName === "-") || !item.imageUrl
-  );
-
-  useEffect(() => {
-    const needsTitle = !item.productName || item.productName === "-";
-    const needsImage = !item.imageUrl;
-
-    if (!needsTitle && !needsImage) {
-      setLoading(false);
-      return;
-    }
-
-    if (!item.newEan) {
-      setLoading(false);
-      return;
-    }
-
-    let isMounted = true;
-    setLoading(true);
-
-    fetch(`/api/bauhaus?ean=${encodeURIComponent(item.newEan)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted) {
-          if (data.found) {
-            if (needsTitle && data.title) {
-              setProductName(data.title);
-            }
-            if (needsImage && data.image) {
-              setImgSrc(data.image);
-            }
-          }
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [item.newEan, item.productName, item.imageUrl]);
-
-  return (
-    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-      {/* Bild-kolumn */}
-      <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
-        {imgSrc ? (
-          <img
-            src={imgSrc}
-            alt={productName || "Produktbild"}
-            style={{
-              width: "45px",
-              height: "45px",
-              objectFit: "contain",
-              borderRadius: "4px",
-              border: "1px solid #e2e8f0",
-              display: "block",
-              margin: "0 auto",
-            }}
-          />
-        ) : loading ? (
-          <span style={{ fontSize: "12px", color: "#a0aec0" }}>...</span>
-        ) : (
-          <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
-        )}
-      </td>
-
-      {/* Produktnamn */}
-      <td style={{ padding: "12px" }}>
-        {productName ? (
-          productName
-        ) : loading ? (
-          <span style={{ color: "#a0aec0", fontSize: "13px", fontStyle: "italic" }}>
-            Hämtar från Bauhaus...
-          </span>
-        ) : (
-          "-"
-        )}
-      </td>
-
-      {/* Gammalt EAN */}
-      <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
-        {item.oldEan}
-      </td>
-
-      {/* Nytt EAN */}
-      <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
-        {item.newEan}
-        <a
-          href={`https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(item.newEan)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Öppna sökning på Bauhaus.se"
-          style={{ marginLeft: "8px", textDecoration: "none", fontSize: "12px" }}
-        >
-          🔗
-        </a>
-      </td>
-
-      {/* Leverantör */}
-      <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
-
-      {/* Åtgärd för Admin */}
-      {isAdmin && (
-        <td style={{ padding: "12px", textAlign: "center" }}>
-          <button
-            onClick={() => onDelete(item.id)}
-            title="Ta bort ersättning"
-            style={{
-              background: "#e53e3e",
-              color: "#fff",
-              border: "none",
-              padding: "6px 10px",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "14px",
-            }}
-          >
-            🗑️
-          </button>
-        </td>
-      )}
-    </tr>
-  );
-}
-
 export default function Home() {
   const [items, setItems] = useState<EanItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState("Alla");
 
-  // Öppet snabbuppslag för alla användare (ej admin)
+  // Öppet snabbuppslag för alla användare
   const [quickEan, setQuickEan] = useState("");
   const [quickTitle, setQuickTitle] = useState("");
   const [quickImage, setQuickImage] = useState<string | null>(null);
@@ -184,7 +42,7 @@ export default function Home() {
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
 
-  // Formulärstater för enskild manuell inmatning i Admin
+  // Formulärstater för manuell inmatning i Admin
   const [oldEan, setOldEan] = useState("");
   const [newEan, setNewEan] = useState("");
   const [productName, setProductName] = useState("");
@@ -194,13 +52,16 @@ export default function Home() {
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupMsg, setLookupMsg] = useState("");
 
-  // Massimport / Batch-import stater
-  const [importTab, setImportTab] = useState<"single" | "batch">("single");
+  // Massimport stater
+  const [importTab, setImportTab] = useState<"single" | "batch" | "enrich">("single");
   const [batchText, setBatchText] = useState("");
   const [batchSupplier, setBatchSupplier] = useState("");
   const [batchStatus, setBatchStatus] = useState("");
 
-  // Inställd PIN-kod
+  // Stater för kontrollerad automatisk uppdatering av alla rader
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState("");
+
   const ADMIN_PIN = "1234";
 
   // Hämta data från Firestore
@@ -222,7 +83,6 @@ export default function Home() {
     fetchItems();
   }, []);
 
-  // Lås upp admin med PIN
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (pinInput === ADMIN_PIN) {
@@ -235,7 +95,7 @@ export default function Home() {
     }
   };
 
-  // Öppet snabbuppslag på Bauhaus
+  // Snabbuppslag på Bauhaus (1 anrop åt gången, säkert)
   const handleQuickLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickEan.trim()) return;
@@ -264,7 +124,6 @@ export default function Home() {
     }
   };
 
-  // Rensa den senaste sökningen i snabbuppslaget
   const handleClearQuickLookup = () => {
     setQuickEan("");
     setQuickTitle("");
@@ -272,7 +131,7 @@ export default function Home() {
     setQuickMessage("");
   };
 
-  // Slå upp EAN i Admin-formuläret (Hämtar namn + bild)
+  // Slå upp EAN i Admin-formuläret
   const lookupBauhaus = async (targetEan: string) => {
     if (!targetEan.trim()) {
       setLookupMsg("Fyll i ett EAN-nummer först.");
@@ -288,9 +147,7 @@ export default function Home() {
 
       if (data.found && data.title) {
         setProductName(data.title);
-        if (data.image) {
-          setImageUrl(data.image);
-        }
+        if (data.image) setImageUrl(data.image);
         setLookupMsg(`Hittades: "${data.title}"`);
       } else {
         setLookupMsg("Ingen matchning hittades hos Bauhaus.");
@@ -303,7 +160,7 @@ export default function Home() {
     }
   };
 
-  // Lägg till enskild EAN-ersättning
+  // Spara ny enskild ersättning
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!oldEan || !newEan) return;
@@ -329,13 +186,13 @@ export default function Home() {
       fetchItems();
     } catch (error) {
       console.error("Fel vid sparning:", error);
-      alert("Det gick inte att spara. Kontrollera Firebase-anslutningen.");
+      alert("Det gick inte att spara.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Importera flera rader samtidigt från Excel / Text
+  // Massimport
   const handleBatchImport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!batchText.trim()) return;
@@ -380,7 +237,7 @@ export default function Home() {
         setBatchSupplier("");
         fetchItems();
       } else {
-        setBatchStatus("Hittade inga giltiga rader. Kontrollera formatet (GammaltEAN [Tab/Komma] NyttEAN).");
+        setBatchStatus("Hittade inga giltiga rader.");
       }
     } catch (error) {
       console.error("Fel vid massimport:", error);
@@ -390,7 +247,65 @@ export default function Home() {
     }
   };
 
-  // Ta bort en EAN-ersättning
+  // KONTROLLERAD UPPDATERING: Går igenom rader långsamt (1 per sek) och sparar i Firestore
+  const handleEnrichAll = async () => {
+    const missingItems = items.filter(
+      (i) => !i.imageUrl || !i.productName || i.productName === "-"
+    );
+
+    if (missingItems.length === 0) {
+      alert("Alla produkter har redan bild och namn sparade i databasen!");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Det finns ${missingItems.length} rader som saknar bild/namn. Vill du starta en säker bakgrundshämtning (tar ca ${Math.ceil(
+          missingItems.length * 1.2
+        )} sekunder)?`
+      )
+    ) {
+      return;
+    }
+
+    setIsEnriching(true);
+    let updatedCount = 0;
+
+    for (let i = 0; i < missingItems.length; i++) {
+      const item = missingItems[i];
+      setEnrichProgress(`Bearbetar ${i + 1} av ${missingItems.length} (${item.newEan})...`);
+
+      try {
+        const res = await fetch(`/api/bauhaus?ean=${encodeURIComponent(item.newEan)}`);
+        const data = await res.json();
+
+        if (data.found) {
+          const updateData: Partial<EanItem> = {};
+          if (data.title && (!item.productName || item.productName === "-")) {
+            updateData.productName = data.title;
+          }
+          if (data.image && !item.imageUrl) {
+            updateData.imageUrl = data.image;
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await updateDoc(doc(db, "ean_mappings", item.id), updateData);
+            updatedCount++;
+          }
+        }
+      } catch (err) {
+        console.error(`Fel för EAN ${item.newEan}:`, err);
+      }
+
+      // Vänta 1 sekund mellan anrop för att vara helt osynlig för Bauhaus
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    setIsEnriching(false);
+    setEnrichProgress(`Klart! Uppdaterade ${updatedCount} st produkter i databasen.`);
+    fetchItems();
+  };
+
   const handleDeleteItem = async (id: string) => {
     if (!confirm("Är du säker på att du vill ta bort den här ersättningen?")) return;
 
@@ -399,7 +314,6 @@ export default function Home() {
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (error) {
       console.error("Fel vid borttagning:", error);
-      alert("Det gick inte att ta bort raden.");
     }
   };
 
@@ -628,6 +542,19 @@ export default function Home() {
             >
               📋 Massimport från Excel
             </button>
+            <button
+              onClick={() => setImportTab("enrich")}
+              style={{
+                padding: "8px 14px",
+                background: importTab === "enrich" ? "#dd6b20" : "#e2e8f0",
+                color: importTab === "enrich" ? "#fff" : "#000",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              🔄 Spara alla bilder & namn
+            </button>
           </div>
 
           {importTab === "single" && (
@@ -718,11 +645,11 @@ export default function Home() {
           {importTab === "batch" && (
             <form onSubmit={handleBatchImport} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <p style={{ margin: "0 0 5px 0", fontSize: "14px", color: "#4a5568" }}>
-                Klistra in kolumner från Excel (eller skriv rad för rad med formatet: <strong>GammaltEAN [TAB/Semikolon/Komma] NyttEAN [TAB/Semikolon/Komma] Produktnamn</strong>):
+                Klistra in kolumner från Excel:
               </p>
               <textarea
                 rows={8}
-                placeholder={"Exempel:\n7312345678901\t7398765432109\tSkruv M6\n7311111111111\t7322222222222\tPlugg 8mm"}
+                placeholder={"Exempel:\n7312345678901\t7398765432109\tSkruv M6"}
                 value={batchText}
                 onChange={(e) => setBatchText(e.target.value)}
                 required
@@ -756,6 +683,35 @@ export default function Home() {
                 </p>
               )}
             </form>
+          )}
+
+          {importTab === "enrich" && (
+            <div>
+              <h4>Hämta och spara bilder/namn för alla rader</h4>
+              <p style={{ fontSize: "14px", color: "#4a5568" }}>
+                Genom att klicka på knappen nedan går appen säkert och lugnt igenom alla dina rader (1 anrop per sekund) och sparar alla saknade bilder och namn permanent i databasen.
+              </p>
+              <button
+                onClick={handleEnrichAll}
+                disabled={isEnriching}
+                style={{
+                  padding: "10px 18px",
+                  background: "#dd6b20",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                {isEnriching ? "Arbetar..." : "🚀 Starta automatisk hämtning"}
+              </button>
+              {enrichProgress && (
+                <p style={{ marginTop: "10px", fontWeight: "bold", color: "#2b6cb0" }}>
+                  {enrichProgress}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -805,7 +761,7 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Lista / Tabell över EAN-koder (Med automatisk hämtning av namn & bild) */}
+      {/* Lista / Tabell över EAN-koder */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
           <thead>
@@ -821,12 +777,63 @@ export default function Home() {
           <tbody>
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
-                <ProductDetailsRow
-                  key={item.id}
-                  item={item}
-                  isAdmin={isAdmin}
-                  onDelete={handleDeleteItem}
-                />
+                <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.productName || "Produktbild"}
+                        style={{
+                          width: "45px",
+                          height: "45px",
+                          objectFit: "contain",
+                          borderRadius: "4px",
+                          border: "1px solid #e2e8f0",
+                          display: "block",
+                          margin: "0 auto",
+                        }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
+                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
+                    {item.oldEan}
+                  </td>
+                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
+                    {item.newEan}
+                    <a
+                      href={`https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(item.newEan)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Öppna sökning på Bauhaus.se"
+                      style={{ marginLeft: "8px", textDecoration: "none", fontSize: "12px" }}
+                    >
+                      🔗
+                    </a>
+                  </td>
+                  <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
+                  {isAdmin && (
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        title="Ta bort ersättning"
+                        style={{
+                          background: "#e53e3e",
+                          color: "#fff",
+                          border: "none",
+                          padding: "6px 10px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  )}
+                </tr>
               ))
             ) : (
               <tr>
