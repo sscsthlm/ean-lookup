@@ -119,6 +119,14 @@ export default function Home() {
     }
   };
 
+  // Funktion för att rensa den senaste sökningen
+  const handleClearQuickLookup = () => {
+    setQuickEan("");
+    setQuickTitle("");
+    setQuickImage(null);
+    setQuickMessage("");
+  };
+
   // Slå upp EAN i Admin-formuläret
   const lookupBauhaus = async (targetEan: string) => {
     if (!targetEan.trim()) {
@@ -292,19 +300,43 @@ export default function Home() {
         </button>
       </div>
 
-      {/* ÖPPET SNABBUPPSLAG MED BILD */}
+      {/* ÖPPET SNABBUPPSLAG MED BILD & KRYSS/RENSA-KNAPP */}
       <div style={{ background: "#ebf8ff", border: "1px solid #90cdf4", padding: "16px", borderRadius: "8px", marginBottom: "25px" }}>
         <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", color: "#2b6cb0" }}>
           🔍 Slå upp EAN direkt hos Bauhaus
         </h3>
-        <form onSubmit={handleQuickLookup} style={{ display: "flex", gap: "10px" }}>
-          <input
-            type="text"
-            placeholder="Skriv in EAN-kod..."
-            value={quickEan}
-            onChange={(e) => setQuickEan(e.target.value)}
-            style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e0" }}
-          />
+        <form onSubmit={handleQuickLookup} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <input
+              type="text"
+              placeholder="Skriv in EAN-kod..."
+              value={quickEan}
+              onChange={(e) => setQuickEan(e.target.value)}
+              style={{ width: "100%", padding: "10px", paddingRight: "35px", borderRadius: "6px", border: "1px solid #cbd5e0", boxSizing: "border-box" }}
+            />
+            {/* Kryss inuti sökfältet */}
+            {quickEan && (
+              <button
+                type="button"
+                onClick={handleClearQuickLookup}
+                title="Rensa fältet"
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "#a0aec0",
+                  fontSize: "16px",
+                  cursor: "pointer",
+                  padding: "0 4px",
+                }}
+              >
+                ✖
+              </button>
+            )}
+          </div>
           <button
             type="submit"
             disabled={isQuickLookingUp}
@@ -324,24 +356,55 @@ export default function Home() {
         </form>
 
         {quickMessage && (
-          <p style={{ marginTop: "12px", fontWeight: "bold", color: "#4a5568" }}>
-            {quickMessage}
-          </p>
+          <div style={{ marginTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p style={{ margin: 0, fontWeight: "bold", color: "#4a5568" }}>
+              {quickMessage}
+            </p>
+            <button
+              onClick={handleClearQuickLookup}
+              style={{ background: "none", border: "none", color: "#e53e3e", cursor: "pointer", fontSize: "13px", underline: "always" }}
+            >
+              Rensa
+            </button>
+          </div>
         )}
 
         {quickTitle && (
-          <div style={{ marginTop: "15px", padding: "12px", background: "#fff", borderRadius: "8px", border: "1px solid #cbd5e0", display: "flex", alignItems: "center", gap: "15px" }}>
-            {quickImage && (
-              <img
-                src={quickImage}
-                alt={quickTitle}
-                style={{ width: "80px", height: "80px", objectFit: "contain", borderRadius: "6px", border: "1px solid #edf2f7" }}
-              />
-            )}
-            <div>
-              <span style={{ fontSize: "12px", color: "#718096", textTransform: "uppercase", fontWeight: "bold" }}>Produkt hos Bauhaus</span>
-              <h4 style={{ margin: "4px 0 0 0", fontSize: "16px", color: "#2d3748" }}>{quickTitle}</h4>
+          <div style={{ marginTop: "15px", padding: "12px", background: "#fff", borderRadius: "8px", border: "1px solid #cbd5e0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "15px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+              {quickImage && (
+                <img
+                  src={quickImage}
+                  alt={quickTitle}
+                  style={{ width: "80px", height: "80px", objectFit: "contain", borderRadius: "6px", border: "1px solid #edf2f7" }}
+                />
+              )}
+              <div>
+                <span style={{ fontSize: "12px", color: "#718096", textTransform: "uppercase", fontWeight: "bold" }}>Produkt hos Bauhaus</span>
+                <h4 style={{ margin: "4px 0 0 0", fontSize: "16px", color: "#2d3748" }}>{quickTitle}</h4>
+              </div>
             </div>
+            {/* Kryss-knapp på resultat-kortet */}
+            <button
+              onClick={handleClearQuickLookup}
+              title="Ta bort sökresultat"
+              style={{
+                background: "#edf2f7",
+                border: "none",
+                borderRadius: "50%",
+                width: "32px",
+                height: "32px",
+                color: "#4a5568",
+                fontSize: "16px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              ✖
+            </button>
           </div>
         )}
       </div>
