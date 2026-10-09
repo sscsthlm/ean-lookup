@@ -119,7 +119,7 @@ export default function Home() {
     }
   };
 
-  // Funktion för att rensa den senaste sökningen
+  // Funktion för att rensa den senaste sökningen i snabbuppslaget
   const handleClearQuickLookup = () => {
     setQuickEan("");
     setQuickTitle("");
@@ -300,7 +300,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* ÖPPET SNABBUPPSLAG MED BILD & KRYSS/RENSA-KNAPP */}
+      {/* ÖPPET SNABBUPPSLAG MED BILD & KRYSS */}
       <div style={{ background: "#ebf8ff", border: "1px solid #90cdf4", padding: "16px", borderRadius: "8px", marginBottom: "25px" }}>
         <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", color: "#2b6cb0" }}>
           🔍 Slå upp EAN direkt hos Bauhaus
@@ -314,7 +314,6 @@ export default function Home() {
               onChange={(e) => setQuickEan(e.target.value)}
               style={{ width: "100%", padding: "10px", paddingRight: "35px", borderRadius: "6px", border: "1px solid #cbd5e0", boxSizing: "border-box" }}
             />
-            {/* Kryss inuti sökfältet */}
             {quickEan && (
               <button
                 type="button"
@@ -384,7 +383,6 @@ export default function Home() {
                 <h4 style={{ margin: "4px 0 0 0", fontSize: "16px", color: "#2d3748" }}>{quickTitle}</h4>
               </div>
             </div>
-            {/* Kryss-knapp på resultat-kortet */}
             <button
               onClick={handleClearQuickLookup}
               title="Ta bort sökresultat"
@@ -604,15 +602,38 @@ export default function Home() {
         </div>
       )}
 
-      {/* Sök och filter i Sparade EAN */}
+      {/* Sök och filter i Sparade EAN (Med Kryss för rensning) */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <input
-          type="text"
-          placeholder="Sök på sparat EAN, produkt eller leverantör..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #ccc" }}
-        />
+        <div style={{ position: "relative", flex: 1 }}>
+          <input
+            type="text"
+            placeholder="Sök på sparat EAN, produkt eller leverantör..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ width: "100%", padding: "10px", paddingRight: "35px", borderRadius: "6px", border: "1px solid #ccc", boxSizing: "border-box" }}
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              title="Rensa sökning"
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                color: "#a0aec0",
+                fontSize: "16px",
+                cursor: "pointer",
+                padding: "0 4px",
+              }}
+            >
+              ✖
+            </button>
+          )}
+        </div>
         <select
           value={selectedSupplier}
           onChange={(e) => setSelectedSupplier(e.target.value)}
