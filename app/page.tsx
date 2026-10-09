@@ -362,7 +362,7 @@ export default function Home() {
             </p>
             <button
               onClick={handleClearQuickLookup}
-              style={{ background: "none", border: "none", color: "#e53e3e", cursor: "pointer", fontSize: "13px", underline: "always" }}
+              style={{ background: "none", border: "none", color: "#e53e3e", cursor: "pointer", fontSize: "13px", textDecoration: "underline" }}
             >
               Rensa
             </button>
@@ -648,50 +648,4 @@ export default function Home() {
                   <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
                     {item.oldEan}
                   </td>
-                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
-                    {item.newEan}
-                    <a
-                      href={`https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(item.newEan)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Öppna sökning på Bauhaus.se"
-                      style={{ marginLeft: "8px", textDecoration: "none", fontSize: "12px" }}
-                    >
-                      🔗
-                    </a>
-                  </td>
-                  <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
-                  {isAdmin && (
-                    <td style={{ padding: "12px", textAlign: "center" }}>
-                      <button
-                        onClick={() => handleDeleteItem(item.id)}
-                        title="Ta bort ersättning"
-                        style={{
-                          background: "#e53e3e",
-                          color: "#fff",
-                          border: "none",
-                          padding: "6px 10px",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                        }}
-                      >
-                        🗑️
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={isAdmin ? 5 : 4} style={{ padding: "20px", textAlign: "center", color: "#718096" }}>
-                  Inga EAN-ersättningar hittades.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </main>
-  );
-}
+                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "
