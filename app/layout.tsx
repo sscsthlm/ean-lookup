@@ -1,18 +1,25 @@
-export const metadata = {
-  title: 'EAN Lookup',
-  description: 'Sök och hantera EAN-koder',
-}
+import type { Metadata, Viewport } from "next";
+
+export const metadata: Metadata = {
+  title: "EAN-Ersättningar",
+  description: "Spåra och hantera EAN-ersättningar",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="sv">
-      <body style={{ margin: 0, padding: 0, fontFamily: 'sans-serif', backgroundColor: '#f8fafc' }}>
-        {children}
-      </body>
+      <body style={{ margin: 0, padding: 0 }}>{children}</body>
     </html>
-  )
+  );
 }
