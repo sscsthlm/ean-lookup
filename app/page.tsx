@@ -23,19 +23,34 @@ interface EanItem {
   imageUrl?: string;
 }
 
-// Komponent som visar sparad bild eller slår upp bild live baserat på nytt EAN
-function ProductImage({ ean, initialUrl, alt }: { ean: string; initialUrl?: string; alt: string }) {
-  const [imgSrc, setImgSrc] = useState<string | null>(initialUrl || null);
-  const [loading, setLoading] = useState(!initialUrl);
+// Hjälpkomponent för att hämta BÅDE bild och produktnamn i bakgrunden om de saknas
+function ProductDetailsRow({
+  item,
+  isAdmin,
+  onDelete,
+}: {
+  item: EanItem;
+  isAdmin: boolean;
+  onDelete: (id: string) => void;
+}) {
+  const [productName, setProductName] = useState<string>(
+    item.productName && item.productName !== "-" ? item.productName : ""
+  );
+  const [imgSrc, setImgSrc] = useState<string | null>(item.imageUrl || null);
+  const [loading, setLoading] = useState<boolean>(
+    (!item.productName || item.productName === "-") || !item.imageUrl
+  );
 
   useEffect(() => {
-    if (initialUrl) {
-      setImgSrc(initialUrl);
+    const needsTitle = !item.productName || item.productName === "-";
+    const needsImage = !item.imageUrl;
+
+    if (!needsTitle && !needsImage) {
       setLoading(false);
       return;
     }
 
-    if (!ean) {
+    if (!item.newEan) {
       setLoading(false);
       return;
     }
@@ -43,12 +58,17 @@ function ProductImage({ ean, initialUrl, alt }: { ean: string; initialUrl?: stri
     let isMounted = true;
     setLoading(true);
 
-    fetch(`/api/bauhaus?ean=${encodeURIComponent(ean)}`)
+    fetch(`/api/bauhaus?ean=${encodeURIComponent(item.newEan)}`)
       .then((res) => res.json())
       .then((data) => {
         if (isMounted) {
-          if (data.found && data.image) {
-            setImgSrc(data.image);
+          if (data.found) {
+            if (needsTitle && data.title) {
+              setProductName(data.title);
+            }
+            if (needsImage && data.image) {
+              setImgSrc(data.image);
+            }
           }
           setLoading(false);
         }
@@ -60,31 +80,90 @@ function ProductImage({ ean, initialUrl, alt }: { ean: string; initialUrl?: stri
     return () => {
       isMounted = false;
     };
-  }, [ean, initialUrl]);
+  }, [item.newEan, item.productName, item.imageUrl]);
 
-  if (loading) {
-    return <span style={{ fontSize: "12px", color: "#a0aec0" }}>...</span>;
-  }
+  return (
+    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+      {/* Bild-kolumn */}
+      <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
+        {imgSrc ? (
+          <img
+            src={imgSrc}
+            alt={productName || "Produktbild"}
+            style={{
+              width: "45px",
+              height: "45px",
+              objectFit: "contain",
+              borderRadius: "4px",
+              border: "1px solid #e2e8f0",
+              display: "block",
+              margin: "0 auto",
+            }}
+          />
+        ) : loading ? (
+          <span style={{ fontSize: "12px", color: "#a0aec0" }}>...</span>
+        ) : (
+          <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
+        )}
+      </td>
 
-  if (imgSrc) {
-    return (
-      <img
-        src={imgSrc}
-        alt={alt}
-        style={{
-          width: "45px",
-          height: "45px",
-          objectFit: "contain",
-          borderRadius: "4px",
-          border: "1px solid #e2e8f0",
-          display: "block",
-          margin: "0 auto",
-        }}
-      />
-    );
-  }
+      {/* Produktnamn */}
+      <td style={{ padding: "12px" }}>
+        {productName ? (
+          productName
+        ) : loading ? (
+          <span style={{ color: "#a0aec0", fontSize: "13px", fontStyle: "italic" }}>
+            Hämtar från Bauhaus...
+          </span>
+        ) : (
+          "-"
+        )}
+      </td>
 
-  return <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>;
+      {/* Gammalt EAN */}
+      <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
+        {item.oldEan}
+      </td>
+
+      {/* Nytt EAN */}
+      <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
+        {item.newEan}
+        <a
+          href={`https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(item.newEan)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Öppna sökning på Bauhaus.se"
+          style={{ marginLeft: "8px", textDecoration: "none", fontSize: "12px" }}
+        >
+          🔗
+        </a>
+      </td>
+
+      {/* Leverantör */}
+      <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
+
+      {/* Åtgärd för Admin */}
+      {isAdmin && (
+        <td style={{ padding: "12px", textAlign: "center" }}>
+          <button
+            onClick={() => onDelete(item.id)}
+            title="Ta bort ersättning"
+            style={{
+              background: "#e53e3e",
+              color: "#fff",
+              border: "none",
+              padding: "6px 10px",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "14px",
+            }}
+          >
+            🗑️
+          </button>
+        </td>
+      )}
+    </tr>
+  );
 }
 
 export default function Home() {
@@ -726,7 +805,7 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Lista / Tabell över EAN-koder (Med automatisk bild-hämtning för gamla rader) */}
+      {/* Lista / Tabell över EAN-koder (Med automatisk hämtning av namn & bild) */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
           <thead>
@@ -742,54 +821,12 @@ export default function Home() {
           <tbody>
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
-                <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  {/* Bild-kolumn som automatiskt slår upp om bildlänk saknas */}
-                  <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
-                    <ProductImage
-                      ean={item.newEan}
-                      initialUrl={item.imageUrl}
-                      alt={item.productName || "Produktbild"}
-                    />
-                  </td>
-                  <td style={{ padding: "12px" }}>
-                    {item.productName || "-"}
-                  </td>
-                  <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
-                    {item.oldEan}
-                  </td>
-                  <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
-                    {item.newEan}
-                    <a
-                      href={`https://www.bauhaus.se/catalogsearch/result/?q=${encodeURIComponent(item.newEan)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Öppna sökning på Bauhaus.se"
-                      style={{ marginLeft: "8px", textDecoration: "none", fontSize: "12px" }}
-                    >
-                      🔗
-                    </a>
-                  </td>
-                  <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
-                  {isAdmin && (
-                    <td style={{ padding: "12px", textAlign: "center" }}>
-                      <button
-                        onClick={() => handleDeleteItem(item.id)}
-                        title="Ta bort ersättning"
-                        style={{
-                          background: "#e53e3e",
-                          color: "#fff",
-                          border: "none",
-                          padding: "6px 10px",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                        }}
-                      >
-                        🗑️
-                      </button>
-                    </td>
-                  )}
-                </tr>
+                <ProductDetailsRow
+                  key={item.id}
+                  item={item}
+                  isAdmin={isAdmin}
+                  onDelete={handleDeleteItem}
+                />
               ))
             ) : (
               <tr>
