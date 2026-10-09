@@ -20,6 +20,7 @@ interface EanItem {
   newEan: string;
   productName?: string;
   supplier?: string;
+  imageUrl?: string;
 }
 
 export default function Home() {
@@ -45,6 +46,7 @@ export default function Home() {
   const [newEan, setNewEan] = useState("");
   const [productName, setProductName] = useState("");
   const [supplier, setSupplier] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupMsg, setLookupMsg] = useState("");
@@ -119,7 +121,7 @@ export default function Home() {
     }
   };
 
-  // Funktion för att rensa den senaste sökningen i snabbuppslaget
+  // Rensa den senaste sökningen i snabbuppslaget
   const handleClearQuickLookup = () => {
     setQuickEan("");
     setQuickTitle("");
@@ -127,7 +129,7 @@ export default function Home() {
     setQuickMessage("");
   };
 
-  // Slå upp EAN i Admin-formuläret
+  // Slå upp EAN i Admin-formuläret (Hämtar namn + bild)
   const lookupBauhaus = async (targetEan: string) => {
     if (!targetEan.trim()) {
       setLookupMsg("Fyll i ett EAN-nummer först.");
@@ -143,6 +145,9 @@ export default function Home() {
 
       if (data.found && data.title) {
         setProductName(data.title);
+        if (data.image) {
+          setImageUrl(data.image);
+        }
         setLookupMsg(`Hittades: "${data.title}"`);
       } else {
         setLookupMsg("Ingen matchning hittades hos Bauhaus.");
@@ -167,6 +172,7 @@ export default function Home() {
         newEan: newEan.trim(),
         productName: productName.trim() || "-",
         supplier: supplier.trim() || "Övrigt",
+        imageUrl: imageUrl.trim() || "",
         createdAt: serverTimestamp(),
       });
 
@@ -174,6 +180,7 @@ export default function Home() {
       setNewEan("");
       setProductName("");
       setSupplier("");
+      setImageUrl("");
       setLookupMsg("");
 
       fetchItems();
@@ -215,6 +222,7 @@ export default function Home() {
               newEan: newEanVal,
               productName: nameVal,
               supplier: batchSupplier.trim() || "Övrigt",
+              imageUrl: "",
               createdAt: serverTimestamp(),
             });
             count++;
@@ -300,7 +308,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* ÖPPET SNABBUPPSLAG MED BILD & KRYSS */}
+      {/* ÖPPET SNABBUPPSLAG */}
       <div style={{ background: "#ebf8ff", border: "1px solid #90cdf4", padding: "16px", borderRadius: "8px", marginBottom: "25px" }}>
         <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", color: "#2b6cb0" }}>
           🔍 Slå upp EAN direkt hos Bauhaus
@@ -508,7 +516,7 @@ export default function Home() {
                 />
                 <button
                   type="button"
-                  onClick={() => lookupBauhaus(oldEan || newEan)}
+                  onClick={() => lookupBauhaus(newEan || oldEan)}
                   disabled={isLookingUp}
                   style={{
                     padding: "8px 12px",
@@ -524,6 +532,13 @@ export default function Home() {
                   {isLookingUp ? "Söker..." : "🔍 Hämta från Bauhaus"}
                 </button>
               </div>
+
+              {imageUrl && (
+                <div style={{ gridColumn: "span 2", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <img src={imageUrl} alt="Förhandsvisning" style={{ width: "40px", height: "40px", objectFit: "contain", borderRadius: "4px", border: "1px solid #ccc" }} />
+                  <span style={{ fontSize: "12px", color: "green" }}>Bild hittad! Sparas med raden.</span>
+                </div>
+              )}
 
               {lookupMsg && (
                 <p style={{ gridColumn: "span 2", margin: "0", fontSize: "13px", color: lookupMsg.includes("Hittades") ? "green" : "#c53030" }}>
@@ -602,7 +617,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Sök och filter i Sparade EAN (Med Kryss för rensning) */}
+      {/* Sök och filter i Sparade EAN */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
         <div style={{ position: "relative", flex: 1 }}>
           <input
@@ -647,11 +662,12 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Lista / Tabell över EAN-koder */}
+      {/* Lista / Tabell över EAN-koder (Med Bildkolumn längst till vänster) */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
           <thead>
             <tr style={{ background: "#edf2f7", textAlign: "left" }}>
+              <th style={{ padding: "12px", border: "1px solid #e2e8f0", width: "55px", textAlign: "center" }}>Bild</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Gammalt EAN</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Nytt EAN</th>
@@ -663,6 +679,18 @@ export default function Home() {
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  {/* Bild-kolumn */}
+                  <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.productName || "Produktbild"}
+                        style={{ width: "45px", height: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid #e2e8f0", display: "block", margin: "0 auto" }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
+                    )}
+                  </td>
                   <td style={{ padding: "12px" }}>
                     {item.productName || "-"}
                   </td>
@@ -705,7 +733,7 @@ export default function Home() {
               ))
             ) : (
               <tr>
-                <td colSpan={isAdmin ? 5 : 4} style={{ padding: "20px", textAlign: "center", color: "#718096" }}>
+                <td colSpan={isAdmin ? 6 : 5} style={{ padding: "20px", textAlign: "center", color: "#718096" }}>
                   Inga EAN-ersättningar hittades.
                 </td>
               </tr>
