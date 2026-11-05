@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "../lib/firebase";
 import {
   collection,
@@ -14,6 +14,7 @@ import {
   deleteDoc,
   updateDoc,
 } from "firebase/firestore";
+import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 interface EanItem {
   id: string;
@@ -36,13 +37,18 @@ export default function Home() {
   const [quickMessage, setQuickMessage] = useState("");
   const [isQuickLookingUp, setIsQuickLookingUp] = useState(false);
 
+  // Kamerascanner-stater
+  const [showScanner, setShowScanner] = useState(false);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+
   // Admin states
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
 
-  // Formulärstater för manuell inmatning i Admin
+  // Formulärstater för manuell inmatning / redigering i Admin
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [oldEan, setOldEan] = useState("");
   const [newEan, setNewEan] = useState("");
   const [productName, setProductName] = useState("");
@@ -83,6 +89,50 @@ export default function Home() {
     fetchItems();
   }, []);
 
+  // Hantera Kamerascanner
+  useEffect(() => {
+    if (showScanner) {
+      const scanner = new Html5QrcodeScanner(
+        "reader",
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 150 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+          ],
+        },
+        false
+      );
+
+      scanner.render(
+        (decodedText) => {
+          setQuickEan(decodedText);
+          setShowScanner(false);
+          scanner.clear();
+          triggerLookup(decodedText);
+        },
+        () => {}
+      );
+
+      scannerRef.current = scanner;
+    } else {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch((err) => console.error(err));
+        scannerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch((err) => console.error(err));
+      }
+    };
+  }, [showScanner]);
+
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (pinInput === ADMIN_PIN) {
@@ -96,9 +146,8 @@ export default function Home() {
   };
 
   // Snabbuppslag på Bauhaus
-  const handleQuickLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickEan.trim()) return;
+  const triggerLookup = async (eanToSearch: string) => {
+    if (!eanToSearch.trim()) return;
 
     setIsQuickLookingUp(true);
     setQuickMessage("Söker hos Bauhaus...");
@@ -106,7 +155,7 @@ export default function Home() {
     setQuickImage(null);
 
     try {
-      const res = await fetch(`/api/bauhaus?ean=${encodeURIComponent(quickEan.trim())}`);
+      const res = await fetch(`/api/bauhaus?ean=${encodeURIComponent(eanToSearch.trim())}`);
       const data = await res.json();
 
       if (data.found && data.title) {
@@ -122,6 +171,11 @@ export default function Home() {
     } finally {
       setIsQuickLookingUp(false);
     }
+  };
+
+  const handleQuickLookup = (e: React.FormEvent) => {
+    e.preventDefault();
+    triggerLookup(quickEan);
   };
 
   const handleClearQuickLookup = () => {
@@ -160,21 +214,58 @@ export default function Home() {
     }
   };
 
-  // Spara ny enskild ersättning
-  const handleAddItem = async (e: React.FormEvent) => {
+  // Starta redigering av en befintlig rad
+  const handleStartEdit = (item: EanItem) => {
+    setEditingId(item.id);
+    setOldEan(item.oldEan);
+    setNewEan(item.newEan);
+    setProductName(item.productName || "");
+    setSupplier(item.supplier || "");
+    setImageUrl(item.imageUrl || "");
+    setImportTab("single");
+    setLookupMsg("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Avbryt redigering
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setOldEan("");
+    setNewEan("");
+    setProductName("");
+    setSupplier("");
+    setImageUrl("");
+    setLookupMsg("");
+  };
+
+  // Spara ny eller uppdaterad ersättning
+  const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!oldEan || !newEan) return;
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, "ean_mappings"), {
-        oldEan: oldEan.trim(),
-        newEan: newEan.trim(),
-        productName: productName.trim() || "-",
-        supplier: supplier.trim() || "Övrigt",
-        imageUrl: imageUrl.trim() || "",
-        createdAt: serverTimestamp(),
-      });
+      if (editingId) {
+        // Uppdatera befintlig rad
+        await updateDoc(doc(db, "ean_mappings", editingId), {
+          oldEan: oldEan.trim(),
+          newEan: newEan.trim(),
+          productName: productName.trim() || "-",
+          supplier: supplier.trim() || "Övrigt",
+          imageUrl: imageUrl.trim() || "",
+        });
+        setEditingId(null);
+      } else {
+        // Lägg till ny rad
+        await addDoc(collection(db, "ean_mappings"), {
+          oldEan: oldEan.trim(),
+          newEan: newEan.trim(),
+          productName: productName.trim() || "-",
+          supplier: supplier.trim() || "Övrigt",
+          imageUrl: imageUrl.trim() || "",
+          createdAt: serverTimestamp(),
+        });
+      }
 
       setOldEan("");
       setNewEan("");
@@ -311,6 +402,7 @@ export default function Home() {
     try {
       await deleteDoc(doc(db, "ean_mappings", id));
       setItems((prev) => prev.filter((item) => item.id !== id));
+      if (editingId === id) handleCancelEdit();
     } catch (error) {
       console.error("Fel vid borttagning:", error);
     }
@@ -346,6 +438,7 @@ export default function Home() {
           onClick={() => {
             if (isAdmin) {
               setIsAdmin(false);
+              handleCancelEdit();
             } else {
               setShowPinModal(true);
             }
@@ -364,16 +457,16 @@ export default function Home() {
         </button>
       </div>
 
-      {/* ÖPPET SNABBUPPSLAG */}
+      {/* ÖPPET SNABBUPPSLAG MED KAMERA-SCANNER */}
       <div style={{ background: "#ebf8ff", border: "1px solid #90cdf4", padding: "16px", borderRadius: "8px", marginBottom: "25px" }}>
         <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", color: "#2b6cb0" }}>
           🔍 Slå upp EAN direkt hos Bauhaus
         </h3>
-        <form onSubmit={handleQuickLookup} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <div style={{ position: "relative", flex: 1 }}>
+        <form onSubmit={handleQuickLookup} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: "1 1 200px" }}>
             <input
               type="text"
-              placeholder="Skriv in EAN-kod..."
+              placeholder="Skriv in eller scanna EAN-kod..."
               value={quickEan}
               onChange={(e) => setQuickEan(e.target.value)}
               style={{ width: "100%", padding: "10px", paddingRight: "35px", borderRadius: "6px", border: "1px solid #cbd5e0", boxSizing: "border-box" }}
@@ -400,6 +493,24 @@ export default function Home() {
               </button>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowScanner(!showScanner)}
+            style={{
+              padding: "10px 14px",
+              background: showScanner ? "#e53e3e" : "#805ad5",
+              color: "#fff",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {showScanner ? "Stäng kamera" : "📷 Scanna"}
+          </button>
+
           <button
             type="submit"
             disabled={isQuickLookingUp}
@@ -414,9 +525,18 @@ export default function Home() {
               whiteSpace: "nowrap",
             }}
           >
-            {isQuickLookingUp ? "Söker..." : "Slå upp vara"}
+            {isQuickLookingUp ? "Söker..." : "Slå upp"}
           </button>
         </form>
+
+        {showScanner && (
+          <div style={{ marginTop: "15px", background: "#fff", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e0" }}>
+            <p style={{ margin: "0 0 10px 0", fontSize: "14px", textAlign: "center", color: "#4a5568" }}>
+              Rikta kameran mot streckkoden på produkten:
+            </p>
+            <div id="reader" style={{ width: "100%", maxWidth: "400px", margin: "0 auto" }}></div>
+          </div>
+        )}
 
         {quickMessage && (
           <div style={{ marginTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -514,9 +634,12 @@ export default function Home() {
       {/* Admin Panel */}
       {isAdmin && (
         <div style={{ background: "#f7fafc", border: "2px dashed #3182ce", padding: "20px", borderRadius: "8px", marginBottom: "30px" }}>
-          <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+          <div style={{ display: "flex", gap: "10px", marginBottom: "15px", flexWrap: "wrap" }}>
             <button
-              onClick={() => setImportTab("single")}
+              onClick={() => {
+                setImportTab("single");
+                handleCancelEdit();
+              }}
               style={{
                 padding: "8px 14px",
                 background: importTab === "single" ? "#3182ce" : "#e2e8f0",
@@ -526,7 +649,7 @@ export default function Home() {
                 cursor: "pointer",
               }}
             >
-              ➕ Lägg till enstaka
+              {editingId ? "✏️ Redigerar rad" : "➕ Lägg till enstaka"}
             </button>
             <button
               onClick={() => setImportTab("batch")}
@@ -557,7 +680,16 @@ export default function Home() {
           </div>
 
           {importTab === "single" && (
-            <form onSubmit={handleAddItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
+            <form onSubmit={handleSaveItem} style={{ display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" }}>
+              {editingId && (
+                <div style={{ gridColumn: "span 2", background: "#feebc8", padding: "8px 12px", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "14px", color: "#744210", fontWeight: "bold" }}>Redigerar befintlig ersättning</span>
+                  <button type="button" onClick={handleCancelEdit} style={{ background: "none", border: "none", color: "#c53030", cursor: "pointer", fontWeight: "bold" }}>
+                    Avbryt redigering ✕
+                  </button>
+                </div>
+              )}
+
               <input
                 type="text"
                 placeholder="Gammalt EAN *"
@@ -622,22 +754,43 @@ export default function Home() {
                 onChange={(e) => setSupplier(e.target.value)}
                 style={{ gridColumn: "span 2", padding: "8px" }}
               />
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                style={{
-                  gridColumn: "span 2",
-                  padding: "10px",
-                  background: "#38a169",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                {isSubmitting ? "Sparar..." : "Spara ersättning"}
-              </button>
+
+              <div style={{ gridColumn: "span 2", display: "flex", gap: "10px" }}>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    background: "#38a169",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {isSubmitting ? "Sparar..." : editingId ? "💾 Spara ändringar" : "Spara ersättning"}
+                </button>
+
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    style={{
+                      padding: "10px 16px",
+                      background: "#cbd5e0",
+                      color: "#2d3748",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Avbryt
+                  </button>
+                )}
+              </div>
             </form>
           )}
 
@@ -760,7 +913,7 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Lista / Tabell över EAN-koder (Ny kolumnordning: Bild -> Gammalt EAN -> Nytt EAN -> Produktnamn -> Leverantör) */}
+      {/* Lista / Tabell över EAN-koder */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e2e8f0" }}>
           <thead>
@@ -770,14 +923,19 @@ export default function Home() {
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Nytt EAN</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Produktnamn</th>
               <th style={{ padding: "12px", border: "1px solid #e2e8f0" }}>Leverantör</th>
-              {isAdmin && <th style={{ padding: "12px", border: "1px solid #e2e8f0", width: "60px", textAlign: "center" }}>Åtgärd</th>}
+              {isAdmin && <th style={{ padding: "12px", border: "1px solid #e2e8f0", width: "100px", textAlign: "center" }}>Åtgärd</th>}
             </tr>
           </thead>
           <tbody>
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => (
-                <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  {/* 1. Bild */}
+                <tr
+                  key={item.id}
+                  style={{
+                    borderBottom: "1px solid #e2e8f0",
+                    background: editingId === item.id ? "#fffaf0" : "transparent",
+                  }}
+                >
                   <td style={{ padding: "8px", textAlign: "center", verticalAlign: "middle" }}>
                     {item.imageUrl ? (
                       <img
@@ -797,13 +955,9 @@ export default function Home() {
                       <span style={{ fontSize: "20px", opacity: 0.3 }} title="Ingen bild">📦</span>
                     )}
                   </td>
-
-                  {/* 2. Gammalt EAN */}
                   <td style={{ padding: "12px", color: "#e53e3e", fontWeight: "bold" }}>
                     {item.oldEan}
                   </td>
-
-                  {/* 3. Nytt EAN */}
                   <td style={{ padding: "12px", color: "#38a169", fontWeight: "bold" }}>
                     {item.newEan}
                     <a
@@ -816,16 +970,26 @@ export default function Home() {
                       🔗
                     </a>
                   </td>
-
-                  {/* 4. Produktnamn */}
                   <td style={{ padding: "12px" }}>{item.productName || "-"}</td>
-
-                  {/* 5. Leverantör */}
                   <td style={{ padding: "12px" }}>{item.supplier || "-"}</td>
-
-                  {/* 6. Åtgärd (Admin) */}
                   {isAdmin && (
-                    <td style={{ padding: "12px", textAlign: "center" }}>
+                    <td style={{ padding: "12px", textAlign: "center", whiteSpace: "nowrap" }}>
+                      <button
+                        onClick={() => handleStartEdit(item)}
+                        title="Redigera ersättning"
+                        style={{
+                          background: "#3182ce",
+                          color: "#fff",
+                          border: "none",
+                          padding: "6px 8px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          marginRight: "4px",
+                        }}
+                      >
+                        ✏️
+                      </button>
                       <button
                         onClick={() => handleDeleteItem(item.id)}
                         title="Ta bort ersättning"
@@ -833,7 +997,7 @@ export default function Home() {
                           background: "#e53e3e",
                           color: "#fff",
                           border: "none",
-                          padding: "6px 10px",
+                          padding: "6px 8px",
                           borderRadius: "4px",
                           cursor: "pointer",
                           fontSize: "14px",
